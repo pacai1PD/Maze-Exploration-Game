@@ -4,8 +4,9 @@
 #include <queue>
 #include <climits>
 #include <algorithm>
+#include <iostream>
 
-// 检查坐标是否合法
+// 判断坐标是否合法
 bool MazeDP::isValid(const Coordinate& coord) const {
     return coord.x >= 0 && coord.x < maze.size() &&
         coord.y >= 0 && coord.y < maze[0].size() &&
@@ -36,14 +37,14 @@ MazeDP::MazeDP(const Maze_Read& mazeRead) :
     resources(mazeRead.getResource()),
     traps(mazeRead.getTrap()) {
 
-    // 构建资源位置到索引的映射
+    // 初始化资源位置到索引的映射
     for (size_t i = 0; i < resources.size(); ++i) {
         resourceMap[resources[i].position] = i;
     }
 }
 
-// 动态规划寻找最优路径
-PathInfo MazeDP::findOptimalPath() {
+// 计算两点之间的最优路径
+PathInfo MazeDP::findPathBetweenPoints(const Coordinate& startPoint, const Coordinate& endPoint) {
     const int rows = maze.size();
     const int cols = maze[0].size();
     const int numResources = resources.size();
@@ -65,10 +66,10 @@ PathInfo MazeDP::findOptimalPath() {
         )
     );
 
-    // 初始化起点
-    dp[start.x][start.y][0] = 0;
+    // 初始化起点状态
+    dp[startPoint.x][startPoint.y][0] = 0;
     std::queue<std::tuple<int, int, int>> q;
-    q.push(std::make_tuple(start.x, start.y, 0));
+    q.push(std::make_tuple(startPoint.x, startPoint.y, 0));
 
     // BFS遍历所有状态
     while (!q.empty()) {
@@ -78,7 +79,7 @@ PathInfo MazeDP::findOptimalPath() {
         int y = std::get<1>(current);
         int mask = std::get<2>(current);
 
-        // 获取所有相邻坐标
+        // 获取相邻节点
         std::vector<Coordinate> neighbors = getNeighbors(Coordinate(x, y));
         for (const Coordinate& neighbor : neighbors) {
             int nx = neighbor.x;
@@ -86,23 +87,30 @@ PathInfo MazeDP::findOptimalPath() {
             int newMask = mask;
             int scoreDelta = 0;
 
-            // 处理资源收集
+            // 遇到资源点
             if (resourceMap.find(neighbor) != resourceMap.end()) {
                 int resIndex = resourceMap[neighbor];
                 if (!(mask & (1 << resIndex))) {
                     newMask |= (1 << resIndex);
-                    scoreDelta += resources[resIndex].value; // 资源只能收集一次
+                    scoreDelta += resources[resIndex].value; // 资源只能获取一次
                 }
             }
 
-            // 处理陷阱（陷阱可以多次触发）
+            // 遇到陷阱（陷阱只触发一次）
             if (maze[nx][ny] == TRAP) {
-                scoreDelta += -3; // 陷阱每次触发扣3分
+                scoreDelta += -3; // 每次触发减3分
             }
 
-            // 更新DP数组
+            // 更新DP状态
             if (dp[x][y][mask] != INT_MIN) {
                 int newScore = dp[x][y][mask] + scoreDelta;
+
+                // 遇到Boss，暂时不做处理
+                if (maze[nx][ny] == BOSS) {
+                    // 暂时不做处理
+                }
+
+                // 关键修改：只要新路径资源值更高，就选择更新
                 if (newScore > dp[nx][ny][newMask]) {
                     dp[nx][ny][newMask] = newScore;
                     parent[nx][ny][newMask] = std::make_pair(x, y);
@@ -112,28 +120,31 @@ PathInfo MazeDP::findOptimalPath() {
         }
     }
 
-    // 寻找终点的最大资源值
-    int maxScore = INT_MIN;
+    // 寻找终点最大资源状态
+    int maxResourcesCollected = 0;
     int bestMask = 0;
-    for (int mask = 0; mask < totalMasks; ++mask) {
-        if (dp[dest.x][dest.y][mask] > maxScore) {
-            maxScore = dp[dest.x][dest.y][mask];
-            bestMask = mask;
+
+    for (size_t m = 0; m < totalMasks; ++m) {
+        if (dp[endPoint.x][endPoint.y][m] != INT_MIN) {
+            if (dp[endPoint.x][endPoint.y][m] > dp[endPoint.x][endPoint.y][bestMask]) {
+                bestMask = m;
+            }
         }
     }
 
-    // 回溯路径
-    std::vector<Coordinate> path;
-    int x = dest.x;
-    int y = dest.y;
+    // 回溯资源路径
+    std::vector<Coordinate> resourcePath;
+    int x = endPoint.x;
+    int y = endPoint.y;
     int mask = bestMask;
+
     while (x != -1 && y != -1) {
-        path.push_back(Coordinate(x, y));
+        resourcePath.push_back(Coordinate(x, y));
         std::pair<int, int> prev = parent[x][y][mask];
         int prevX = prev.first;
         int prevY = prev.second;
 
-        // 更新资源状态（回溯时清除已收集的资源位）
+        // 遇到资源点时，更新资源状态
         if (resourceMap.find(Coordinate(x, y)) != resourceMap.end()) {
             int resIndex = resourceMap[Coordinate(x, y)];
             mask &= ~(1 << resIndex);
@@ -144,10 +155,75 @@ PathInfo MazeDP::findOptimalPath() {
     }
 
     // 反转路径（从起点到终点）
-    std::reverse(path.begin(), path.end());
+    std::reverse(resourcePath.begin(), resourcePath.end());
 
     PathInfo pathInfo;
-    pathInfo.path = path;
-    pathInfo.score = maxScore;
+    pathInfo.path = resourcePath;
+    pathInfo.score = dp[endPoint.x][endPoint.y][bestMask];
+    return pathInfo;
+}
+
+// 动态规划寻找最优路径
+PathInfo MazeDP::findOptimalPath() {
+    std::vector<Coordinate> allPoints;
+    allPoints.push_back(start);
+    for (const auto& res : resources) {
+        allPoints.push_back(res.position);
+    }
+    allPoints.push_back(dest);
+
+    std::vector<Coordinate> finalPath;
+    int finalScore = 0;
+    Coordinate currentPos = start;
+
+    while (true) {
+        int bestScore = INT_MIN;
+        Coordinate nextPoint;
+        std::vector<Coordinate> bestPath;
+
+        for (const auto& point : allPoints) {
+            if (point == currentPos) continue;
+
+            PathInfo pathInfo = findPathBetweenPoints(currentPos, point);
+            if (pathInfo.score > bestScore && pathInfo.score >= 0) {
+                bestScore = pathInfo.score;
+                nextPoint = point;
+                bestPath = pathInfo.path;
+            }
+        }
+
+        if (bestScore == INT_MIN) {
+            // 没有找到合适的路径，直接前往终点
+            PathInfo pathInfo = findPathBetweenPoints(currentPos, dest);
+            if (pathInfo.score >= 0) {
+                finalPath.insert(finalPath.end(), pathInfo.path.begin(), pathInfo.path.end());
+                finalScore += pathInfo.score;
+            }
+            break;
+        }
+
+        // 移除已经到达的点
+        auto it = std::find(allPoints.begin(), allPoints.end(), nextPoint);
+        if (it != allPoints.end()) {
+            allPoints.erase(it);
+        }
+
+        // 跳过路径的起点
+        if (!finalPath.empty()) {
+            bestPath.erase(bestPath.begin());
+        }
+
+        finalPath.insert(finalPath.end(), bestPath.begin(), bestPath.end());
+        finalScore += bestScore;
+        currentPos = nextPoint;
+
+        if (currentPos == dest) {
+            break;
+        }
+    }
+
+    PathInfo pathInfo;
+    pathInfo.path = finalPath;
+    pathInfo.score = finalScore;
     return pathInfo;
 }

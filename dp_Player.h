@@ -5,13 +5,6 @@
 #include <tuple>
 #include <unordered_map>
 
-// 路径信息结构体
-/*struct PathInfo {
-    std::vector<Coordinate> path; // 路径坐标序列
-    int score;                    // 总资源值
-    PathInfo() : score(-INT_MAX) {}
-};*/
-
 class MazeDP {
 private:
     const std::vector<std::vector<int>>& maze;          // 迷宫矩阵
@@ -20,11 +13,14 @@ private:
     std::vector<PositionInfo> traps;                   // 陷阱信息
     std::unordered_map<Coordinate, int> resourceMap;   // 资源位置到索引的映射
 
-    // 检查坐标合法性
+    // 判断坐标是否合法
     bool isValid(const Coordinate& coord) const;
 
-    // 获取相邻可走坐标
+    // 获取相邻坐标
     std::vector<Coordinate> getNeighbors(const Coordinate& coord) const;
+
+    // 计算两点之间的最优路径
+    PathInfo findPathBetweenPoints(const Coordinate& startPoint, const Coordinate& endPoint);
 
 public:
     // 构造函数
