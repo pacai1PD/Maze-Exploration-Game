@@ -1,15 +1,12 @@
 #include "Maze_generation.h"
 
-MazeGenerator::MazeGenerator(int rows, int cols) : m_rng(random_device{}()) {
-    maze.resize(2 * m_rows + 1, vector<char>(2 * m_cols + 1, WALL));
-}
 
-// 生成迷宫
-void MazeGenerator::generate() {
-    initMaze();
-    divide(0, 0, m_cols - 1, m_rows - 1);
-    ensureConnectivity();
-    placeGameElements();
+
+
+//初始化
+MazeGenerator::MazeGenerator(int rows, int cols) 
+    : m_rows(rows), m_cols(cols) {
+    maze.resize(2 * m_rows + 1, vector<char>(2 * m_cols + 1, WALL));
 }
 
 // 确保迷宫连通性
@@ -39,26 +36,35 @@ void MazeGenerator::floodFill(int r, int c, int regionId, vector<vector<int>>& r
     queue<pair<int, int>> q;
     q.push({r, c});
     regions[r][c] = regionId;
-    
+
     while (!q.empty()) {
-        auto [row, col] = q.front();
+        auto front = q.front();
+        int row = front.first;
+        int col = front.second;
         q.pop();
-        
-        for (auto [dr, dc] : dirs) {
+
+        for (const auto& dir : dirs) {
+            int dr = dir.first;
+            int dc = dir.second;
             int nr = row + dr;
             int nc = col + dc;
-            
-            // 检查是否在迷宫范围内且是通路
-            if (nr >= 0 && nr < 2*m_rows+1 && nc >= 0 && nc < 2*m_cols+1) {
-                // 检查水平和垂直移动是否通过墙壁
-                if (dr != 0 && (nr % 2 == 0 || maze[nr][col] == WALL)) continue;
-                if (dc != 0 && (nc % 2 == 0 || maze[row][nc] == WALL)) continue;
-                
-                if (maze[nr][nc] != WALL && regions[nr][nc] == -1) {
-                    regions[nr][nc] = regionId;
-                    q.push({nr, nc});
-                }
-            }
+
+            // 检查是否在迷宫范围内
+            if (nr < 0 || nr >= 2 * m_rows + 1 || nc < 0 || nc >= 2 * m_cols + 1)
+                continue;
+
+            // 只允许从房间走到房间，中间不能有墙
+            if (maze[nr][nc] == WALL || regions[nr][nc] != -1)
+                continue;
+
+            // 检查是否有墙阻挡
+            int wall_r = (row + nr) / 2;
+            int wall_c = (col + nc) / 2;
+            if (maze[wall_r][wall_c] == WALL)
+                continue;
+
+            regions[nr][nc] = regionId;
+            q.push({nr, nc});
         }
     }
 }
@@ -94,37 +100,37 @@ void MazeGenerator::connectRegions(vector<vector<int>>& regions, int regionCount
     for (int i = 1; i < regionCount; i++) {
         if (!regionBoundaries[i].empty()) {
             uniform_int_distribution<int> dist(0, regionBoundaries[i].size()-1);
-            auto [r, c] = regionBoundaries[i][dist(m_rng)];
-            maze[r][c] = PATH; // 打通墙壁
+            auto rc = regionBoundaries[i][dist(m_rng)];
+            maze[rc.first][rc.second] = PATH; // 打通墙壁
         }
     }
 }
 
-// 将迷宫转换为JSON格式
-json MazeGenerator::toJson() const {
-    json j;
-    j["rows"] = 2 * m_rows + 1;
-    j["cols"] = 2 * m_cols + 1;
+// // 将迷宫转换为JSON格式
+// json MazeGenerator::toJson() const {
+//     json j;
+//     j["rows"] = 2 * m_rows + 1;
+//     j["cols"] = 2 * m_cols + 1;
     
-    json mazeArray = json::array();
-    for (const auto& row : maze) {
-        string rowStr;
-        for (char c : row) {
-            rowStr += c;
-        }
-        mazeArray.push_back(rowStr);
-    }
-    j["maze"] = mazeArray;
+//     json mazeArray = json::array();
+//     for (const auto& row : maze) {
+//         string rowStr;
+//         for (char c : row) {
+//             rowStr += c;
+//         }
+//         mazeArray.push_back(rowStr);
+//     }
+//     j["maze"] = mazeArray;
     
-    return j;
-}
+//     return j;
+// }
 
-// 保存迷宫到文件
-void MazeGenerator::saveToFile(const string& filename) const {
-    json j = toJson();
-    ofstream file(filename);
-    file.close();
-}
+// // 保存迷宫到文件
+// void MazeGenerator::saveToFile(const string& filename) const {
+//     json j = toJson();
+//     ofstream file(filename);
+//     file.close();
+// }
 
 // 打印迷宫
 void MazeGenerator::print() const {
@@ -221,51 +227,58 @@ void MazeGenerator::divide(int left, int top, int right, int bottom) {
 
 void MazeGenerator::placeGameElements() {
     vector<pair<int, int>> availableRooms;
-    
     for (int r = 0; r < m_rows; r++) {
         for (int c = 0; c < m_cols; c++) {
-
             if (maze[2 * r + 1][2 * c + 1] == PATH) {
-                availableRooms.emplace_back(r, c);
+                availableRooms.push_back(make_pair(r, c));
             }
         }
     }
     shuffle(availableRooms.begin(), availableRooms.end(), m_rng);
-    
-    auto [start_r, start_c] = availableRooms[0];
+
+    // 防止房间数量不足
+    if (availableRooms.size() < 3) return;
+
+    int start_r = availableRooms[0].first, start_c = availableRooms[0].second;
     maze[2 * start_r + 1][2 * start_c + 1] = START;
 
-    auto [exit_r, exit_c] = availableRooms[1];
+    int exit_r = availableRooms[1].first, exit_c = availableRooms[1].second;
     maze[2 * exit_r + 1][2 * exit_c + 1] = EXIT;
-    
-    // 放置BOSS
-    auto [boss_r, boss_c] = availableRooms[2];
+
+    int boss_r = availableRooms[2].first, boss_c = availableRooms[2].second;
     maze[2 * boss_r + 1][2 * boss_c + 1] = BOSS;
-    
-    // 放置资源、陷阱和机关
+
     int index = 3;
     int resources = min(5, (int)availableRooms.size() - index);
     for (int i = 0; i < resources; i++) {
-        if (index >= availableRooms.size()) break;
-        auto [r, c] = availableRooms[index++];
+        if (index >= (int)availableRooms.size()) break;
+        int r = availableRooms[index].first, c = availableRooms[index].second;
         maze[2 * r + 1][2 * c + 1] = RESOURCE;
+        index++;
     }
-    
+
     int traps = min(3, (int)availableRooms.size() - index);
     for (int i = 0; i < traps; i++) {
-        if (index >= availableRooms.size()) break;
-        auto [r, c] = availableRooms[index++];
+        if (index >= (int)availableRooms.size()) break;
+        int r = availableRooms[index].first, c = availableRooms[index].second;
         maze[2 * r + 1][2 * c + 1] = TRAP;
+        index++;
     }
-    
+
     int mechanisms = min(3, (int)availableRooms.size() - index);
     for (int i = 0; i < mechanisms; i++) {
-        if (index >= availableRooms.size()) break;
-        auto [r, c] = availableRooms[index++];
+        if (index >= (int)availableRooms.size()) break;
+        int r = availableRooms[index].first, c = availableRooms[index].second;
         maze[2 * r + 1][2 * c + 1] = MECHANISM;
+        index++;
     }
 }
-
+void MazeGenerator::generate() {
+    initMaze();
+    divide(0, 0, m_cols - 1, m_rows - 1);
+    ensureConnectivity();
+    placeGameElements();
+}
 
 void generateMaze() {
     cout << "请输入迷宫尺寸" << endl;
@@ -294,6 +307,10 @@ void generateMaze() {
     MazeGenerator generator((rows - 1)/2, (cols - 1)/2);
     generator.generate();
     generator.print();
-    generator.saveToFile("maze.json");
+    // generator.saveToFile("maze.json");
     
+}
+int main() {
+    generateMaze();
+    return 0;
 }

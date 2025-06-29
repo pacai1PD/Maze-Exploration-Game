@@ -6,9 +6,15 @@
 #include <algorithm>
 #include <fstream>
 #include <queue>
-#include <nlohmann/json.hpp>
+#include <unordered_set>
+#include <string>
+#include <sstream>
 
-using json = nlohmann::json;
+// #include <nlohmann/json.hpp>
+
+
+// using json = nlohmann::json;
+using namespace std;
 
 class MazeGenerator {
 private:
@@ -32,8 +38,8 @@ public:
     MazeGenerator(int rows, int cols);
     void generate();
     void ensureConnectivity();
-    json toJson() const;
-    void saveToFile(const std::string& filename) const;
+    // json toJson() const;
+    // void saveToFile(const std::string& filename) const;
     void print() const;
 
 private:
